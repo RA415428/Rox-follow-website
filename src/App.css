@@ -637,3 +637,20 @@ footer {
     flex-direction: column;
   }
 }
+
+.admin-link{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:10px 16px;
+  border:1px solid rgba(168,85,247,.35);
+  border-radius:12px;
+  color:#c084fc;
+  text-decoration:none;
+  font-weight:700;
+  transition:.2s;
+}
+.admin-link:hover{
+  background:rgba(168,85,247,.12);
+  border-color:#a855f7;
+}

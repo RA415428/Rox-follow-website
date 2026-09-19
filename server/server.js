@@ -13,6 +13,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 
 const DATA_DIR = path.join(process.cwd(), 'server-data');
 const DATA_FILE = path.join(DATA_DIR, 'published.json');
+const GITHUB_CONTENTS_PATH = 'server-data/published.json';
 
 app.use(cors());
 app.use(express.json());
@@ -26,7 +27,99 @@ function readPublished() {
   }
 }
 
-function savePublished(data) {
+async function readPublishedRemote() {
+  if (!GITHUB_TOKEN) return readPublished();
+
+  try {
+    const data = await github(`/repos/${GITHUB_OWNER}/Rox-follow-website/contents/${GITHUB_CONTENTS_PATH}`);
+    return JSON.parse(Buffer.from(data.content, 'base64').toString('utf8'));
+  } catch {
+    return readPublished();
+  }
+}
+
+function readPublishedLegacy() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) return null;
+    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function savePublished(data) {
+  if (!GITHUB_TOKEN) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    return;
+  }
+
+  const apiPath = `/repos/${GITHUB_OWNER}/Rox-follow-website/contents/${GITHUB_CONTENTS_PATH}`;
+  let sha;
+
+  try {
+    const existing = await github(apiPath);
+    sha = existing.sha;
+  } catch {}
+
+  const body = {
+    message: 'Update published APK',
+    content: Buffer.from(JSON.stringify(data, null, 2)).toString('base64')
+  };
+  if (sha) body.sha = sha;
+
+  const response = await fetch(`https://api.github.com${apiPath}`, {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'Rox-Follow-Website',
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.message || 'Failed to save published APK');
+}
+
+async function deletePublished() {
+  if (!GITHUB_TOKEN) {
+    await deletePublished();
+    return;
+  }
+
+  const apiPath = `/repos/${GITHUB_OWNER}/Rox-follow-website/contents/${GITHUB_CONTENTS_PATH}`;
+  let existing;
+  try {
+    existing = await github(apiPath);
+  } catch {
+    return;
+  }
+
+  const response = await fetch(`https://api.github.com${apiPath}`, {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'Rox-Follow-Website',
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      message: 'Unpublish APK',
+      sha: existing.sha
+    })
+  });
+
+  if (!response.ok) {
+    const result = await response.json();
+    throw new Error(result.message || 'Failed to unpublish APK');
+  }
+}
+
+
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
@@ -96,7 +189,7 @@ app.get('/api/releases', adminRequired, async (req, res) => {
     res.json({
       success: true,
       releases: result,
-      published: readPublished()
+      published: await readPublishedRemote()
     });
   } catch (error) {
     res.status(500).json({
@@ -160,7 +253,7 @@ app.post('/api/publish', adminRequired, async (req, res) => {
       publishedAt: new Date().toISOString()
     };
 
-    savePublished(published);
+    await savePublished(published);
 
     res.json({
       success: true,
@@ -176,7 +269,7 @@ app.post('/api/publish', adminRequired, async (req, res) => {
 
 app.post('/api/unpublish', adminRequired, (req, res) => {
   try {
-    if (fs.existsSync(DATA_FILE)) fs.unlinkSync(DATA_FILE);
+    await deletePublished();
 
     res.json({
       success: true,
@@ -193,7 +286,7 @@ app.post('/api/unpublish', adminRequired, (req, res) => {
 app.get('/api/public/apk', (req, res) => {
   res.json({
     success: true,
-    published: readPublished()
+    published: await readPublishedRemote()
   });
 });
 

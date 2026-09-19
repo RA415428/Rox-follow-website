@@ -19,7 +19,7 @@ function App() {
         <nav className={menuOpen ? 'navLinks open' : 'navLinks'}>
           <a href="#home" onClick={() => setMenuOpen(false)}>Home</a>
           <a href="#features" onClick={() => setMenuOpen(false)}>Features</a>
-          <a href="#download" onClick={() => setMenuOpen(false)}>Download</a>
+          <a href="/admin.html" className="admin-link">Admin Panel</a><a href="#download" onClick={() => setMenuOpen(false)}>Download</a>
           <a href="#support" onClick={() => setMenuOpen(false)}>Support</a>
         </nav>
       </header>
