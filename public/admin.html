@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ROX FOLLOW — Admin Panel</title>
+<style>
+*{box-sizing:border-box}
+body{
+margin:0;
+font-family:Arial,Helvetica,sans-serif;
+background:#08060d;
+color:#fff;
+min-height:100vh;
+}
+.wrap{
+width:min(1100px,94%);
+margin:auto;
+}
+header{
+padding:25px 0;
+display:flex;
+justify-content:space-between;
+align-items:center;
+border-bottom:1px solid #241d31;
+}
+.logo{
+font-size:22px;
+font-weight:900;
+letter-spacing:.5px;
+}
+.logo span{color:#a855f7}
+.status{
+font-size:12px;
+color:#9ca3af;
+}
+.card{
+margin:35px auto;
+padding:28px;
+background:#110d18;
+border:1px solid #2a2135;
+border-radius:20px;
+box-shadow:0 20px 60px #0008;
+}
+.login{
+max-width:450px;
+}
+h1{
+margin:0 0 10px;
+font-size:30px;
+}
+h2{
+margin:0 0 8px;
+}
+p{
+color:#a7a0af;
+line-height:1.6;
+}
+input{
+width:100%;
+height:52px;
+margin:15px 0;
+padding:0 15px;
+border-radius:12px;
+border:1px solid #34283f;
+background:#09070d;
+color:white;
+outline:none;
+font-size:15px;
+}
+input:focus{border-color:#9333ea}
+button{
+border:0;
+border-radius:11px;
+padding:12px 18px;
+font-weight:800;
+cursor:pointer;
+}
+.primary{
+background:linear-gradient(135deg,#7c3aed,#a855f7);
+color:white;
+}
+.danger{
+background:#35131a;
+color:#fca5a5;
+border:1px solid #6b202d;
+}
+.secondary{
+background:#21182b;
+color:#d8b4fe;
+border:1px solid #3d2b4e;
+}
+.full{width:100%}
+.error{
+margin-top:15px;
+padding:12px;
+border-radius:10px;
+background:#35131a;
+color:#fca5a5;
+font-size:13px;
+}
+.hidden{display:none}
+.topbar{
+display:flex;
+justify-content:space-between;
+align-items:center;
+gap:15px;
+margin-bottom:25px;
+}
+.published{
+padding:20px;
+border-radius:16px;
+background:#0c2015;
+border:1px solid #1f6538;
+margin-bottom:25px;
+}
+.badge{
+display:inline-block;
+font-size:11px;
+font-weight:900;
+color:#86efac;
+letter-spacing:1px;
+margin-bottom:8px;
+}
+.release{
+padding:20px;
+margin:15px 0;
+border:1px solid #2a2135;
+border-radius:16px;
+background:#0d0a12;
+}
+.release-head{
+display:flex;
+justify-content:space-between;
+align-items:flex-start;
+gap:15px;
+}
+.tag{
+display:inline-block;
+padding:5px 9px;
+border-radius:7px;
+background:#25153a;
+color:#d8b4fe;
+font-size:11px;
+font-weight:800;
+}
+.release h3{margin:10px 0 4px}
+.release small{color:#77717f}
+.asset{
+display:flex;
+justify-content:space-between;
+align-items:center;
+gap:15px;
+padding:14px;
+margin-top:14px;
+border-radius:12px;
+background:#17111e;
+}
+.asset-name{
+font-weight:700;
+word-break:break-all;
+}
+.asset-size{
+font-size:11px;
+color:#77717f;
+margin-top:5px;
+}
+.empty{
+padding:45px 20px;
+text-align:center;
+border:1px dashed #3a3044;
+border-radius:16px;
+color:#8b8492;
+}
+.loader{
+padding:30px;
+text-align:center;
+color:#a7a0af;
+}
+@media(max-width:650px){
+.card{padding:20px}
+.release-head,.asset,.topbar{
+flex-direction:column;
+align-items:stretch;
+}
+}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+<header>
+<div class="logo">ROX <span>FOLLOW</span></div>
+<div class="status">Website APK Manager</div>
+</header>
+
+<section id="loginCard" class="card login">
+<h1>Admin Login</h1>
+<p>Login to manage which GitHub Release APK is published on the ROX FOLLOW website.</p>
+
+<input id="password" type="password" placeholder="Admin password">
+
+<button id="loginBtn" class="primary full">Login to Admin Panel</button>
+
+<div id="loginError" class="error hidden"></div>
+</section>
+
+<section id="panel" class="card hidden">
+
+<div class="topbar">
+<div>
+<h2>APK Publishing</h2>
+<p>Select an APK from <b>RA415428/Roxfollowapp</b>.</p>
+</div>
+<button id="logoutBtn" class="secondary">Logout</button>
+</div>
+
+<div id="publishedBox"></div>
+
+<div id="message"></div>
+
+<div id="releaseList" class="loader">
+Loading GitHub Releases...
+</div>
+
+</section>
+
+</div>
+
+<script>
+const API="https://rox-follow-website-api.onrender.com";
+
+let adminPassword="";
+
+const $=id=>document.getElementById(id);
+
+function showError(text){
+$("loginError").textContent=text;
+$("loginError").classList.remove("hidden");
+}
+
+function size(bytes){
+if(!bytes)return"Unknown size";
+return(bytes/1024/1024).toFixed(2)+" MB";
+}
+
+async function api(path,options={}){
+options.headers={
+...(options.headers||{}),
+"x-admin-password":adminPassword
+};
+const r=await fetch(API+path,options);
+const data=await r.json();
+if(!r.ok||!data.success)throw new Error(data.error||"Request failed");
+return data;
+}
+
+async function login(){
+const password=$("password").value.trim();
+
+if(!password){
+showError("Admin password enter karo.");
+return;
+}
+
+$("loginBtn").disabled=true;
+$("loginBtn").textContent="Checking...";
+
+try{
+adminPassword=password;
+const data=await api("/api/releases");
+
+$("loginCard").classList.add("hidden");
+$("panel").classList.remove("hidden");
+
+render(data);
+}catch(e){
+adminPassword="";
+showError(e.message);
+}finally{
+$("loginBtn").disabled=false;
+$("loginBtn").textContent="Login to Admin Panel";
+}
+}
+
+function render(data){
+
+const published=data.published;
+
+if(published){
+$("publishedBox").innerHTML=`
+<div class="published">
+<div class="badge">● CURRENTLY PUBLISHED</div>
+<h3>${escapeHtml(published.fileName)}</h3>
+<p>
+Version: <b>${escapeHtml(published.tagName)}</b>
+&nbsp; • &nbsp;
+Size: ${size(published.fileSize)}
+</p>
+<button class="danger" onclick="unpublish()">Unpublish APK</button>
+</div>`;
+}else{
+$("publishedBox").innerHTML=`
+<div class="published" style="background:#17111e;border-color:#34283f">
+<div style="color:#c4b5fd;font-weight:800">NO APK PUBLISHED</div>
+<p>Choose a GitHub Release APK below to publish it.</p>
+</div>`;
+}
+
+const releases=data.releases||[];
+
+if(!releases.length){
+$("releaseList").innerHTML=`
+<div class="empty">
+<div style="font-size:40px">📦</div>
+<h3>No GitHub Releases Found</h3>
+<p>Create a Release containing an APK in<br>
+<b>RA415428/Roxfollowapp</b>.</p>
+</div>`;
+return;
+}
+
+$("releaseList").innerHTML=releases.map(release=>{
+
+const apks=release.assets.filter(a=>
+a.name.toLowerCase().endsWith(".apk")
+);
+
+return`
+<div class="release">
+<div class="release-head">
+<div>
+<span class="tag">${escapeHtml(release.tagName)}</span>
+<h3>${escapeHtml(release.name)}</h3>
+<small>
+${release.publishedAt?
+new Date(release.publishedAt).toLocaleString():
+"Not published"}
+</small>
+</div>
+</div>
+
+${
+apks.length?
+apks.map(asset=>`
+<div class="asset">
+<div>
+<div class="asset-name">${escapeHtml(asset.name)}</div>
+<div class="asset-size">${size(asset.size)}</div>
+</div>
+<button class="primary"
+onclick="publish(${release.id},${asset.id},'${escapeAttr(asset.name)}')">
+Publish
+</button>
+</div>
+`).join("")
+:
+`<div style="margin-top:15px;color:#77717f;font-size:13px">
+No APK file in this release.
+</div>`
+}
+
+</div>`;
+}).join("");
+}
+
+async function publish(releaseId,assetId,name){
+
+const ok=confirm(
+'Publish "'+name+'" on the ROX FOLLOW website?'
+);
+
+if(!ok)return;
+
+$("message").innerHTML=
+'<div class="loader">Publishing APK...</div>';
+
+try{
+const data=await api("/api/publish",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({releaseId,assetId})
+});
+
+$("message").innerHTML=
+'<div class="published"><div class="badge">✓ SUCCESS</div><p>APK successfully published on the website.</p></div>';
+
+const fresh=await api("/api/releases");
+render(fresh);
+
+}catch(e){
+$("message").innerHTML=
+'<div class="error">'+escapeHtml(e.message)+'</div>';
+}
+}
+
+async function unpublish(){
+
+const ok=confirm(
+"Unpublish the current APK from the website?"
+);
+
+if(!ok)return;
+
+$("message").innerHTML=
+'<div class="loader">Unpublishing APK...</div>';
+
+try{
+await api("/api/unpublish",{
+method:"POST"
+});
+
+$("message").innerHTML=
+'<div class="published"><div class="badge">✓ SUCCESS</div><p>APK has been unpublished.</p></div>';
+
+const fresh=await api("/api/releases");
+render(fresh);
+
+}catch(e){
+$("message").innerHTML=
+'<div class="error">'+escapeHtml(e.message)+'</div>';
+}
+}
+
+function logout(){
+adminPassword="";
+$("panel").classList.add("hidden");
+$("loginCard").classList.remove("hidden");
+$("password").value="";
+}
+
+function escapeHtml(value){
+return String(value??"")
+.replace(/&/g,"&amp;")
+.replace(/</g,"&lt;")
+.replace(/>/g,"&gt;")
+.replace(/"/g,"&quot;")
+.replace(/'/g,"&#039;");
+}
+
+function escapeAttr(value){
+return String(value??"").replace(/'/g,"\\'");
+}
+
+$("loginBtn").addEventListener("click",login);
+
+$("password").addEventListener("keydown",e=>{
+if(e.key==="Enter")login();
+});
+
+$("logoutBtn").addEventListener("click",logout);
+</script>
+
+</body>
+</html>
