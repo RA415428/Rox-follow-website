@@ -122,7 +122,6 @@ async function deletePublished() {
 
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
 
 async function github(pathname) {
   const headers = {
@@ -267,7 +266,7 @@ app.post('/api/publish', adminRequired, async (req, res) => {
   }
 });
 
-app.post('/api/unpublish', adminRequired, (req, res) => {
+app.post('/api/unpublish', adminRequired, async (req, res) => {
   try {
     await deletePublished();
 
@@ -283,7 +282,7 @@ app.post('/api/unpublish', adminRequired, (req, res) => {
   }
 });
 
-app.get('/api/public/apk', (req, res) => {
+app.get('/api/public/apk', async (req, res) => {
   res.json({
     success: true,
     published: await readPublishedRemote()
