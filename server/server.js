@@ -1,53 +1,150 @@
 import express from 'express';
 import cors from 'cors';
-import fs from 'fs';
-import path from 'path';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 const GITHUB_OWNER = 'RA415428';
-const GITHUB_REPO = 'Roxfollowapp';
+const GITHUB_APP_REPO = 'Roxfollowapp';
+const GITHUB_WEBSITE_REPO = 'Rox-follow-website';
+
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 
-const DATA_DIR = path.join(process.cwd(), 'server-data');
-const DATA_FILE = path.join(DATA_DIR, 'published.json');
+const PUBLISHED_FILE = 'server-data/published.json';
 
 app.use(cors());
 app.use(express.json());
 
-function readPublished() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) return null;
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-function savePublished(data) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
-
-async function github(pathname) {
+function githubHeaders() {
   const headers = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
     'User-Agent': 'Rox-Follow-Website'
   };
 
-  if (GITHUB_TOKEN) headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
+  if (GITHUB_TOKEN) {
+    headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
+  }
 
-  const response = await fetch(`https://api.github.com${pathname}`, { headers });
-  const data = await response.json();
+  return headers;
+}
+
+async function github(pathname, options = {}) {
+  if (!GITHUB_TOKEN) {
+    throw new Error('GITHUB_TOKEN is not configured.');
+  }
+
+  const response = await fetch(
+    `https://api.github.com${pathname}`,
+    {
+      ...options,
+      headers: {
+        ...githubHeaders(),
+        ...(options.headers || {})
+      }
+    }
+  );
+
+  const text = await response.text();
+
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { message: text };
+  }
 
   if (!response.ok) {
-    throw new Error(data.message || `GitHub API error ${response.status}`);
+    throw new Error(
+      data.message || `GitHub API error ${response.status}`
+    );
   }
 
   return data;
+}
+
+async function getPublishedFile() {
+  try {
+    const data = await github(
+      `/repos/${GITHUB_OWNER}/${GITHUB_WEBSITE_REPO}/contents/${PUBLISHED_FILE}`
+    );
+
+    const content = Buffer.from(
+      String(data.content || '').replace(/\n/g, ''),
+      'base64'
+    ).toString('utf8');
+
+    return {
+      data: JSON.parse(content),
+      sha: data.sha
+    };
+  } catch (error) {
+    if (
+      error.message.includes('Not Found') ||
+      error.message.includes('404')
+    ) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+async function readPublished() {
+  const file = await getPublishedFile();
+  return file ? file.data : null;
+}
+
+async function savePublished(data) {
+  const existing = await getPublishedFile();
+
+  const content = Buffer.from(
+    JSON.stringify(data, null, 2) + '\n',
+    'utf8'
+  ).toString('base64');
+
+  const body = {
+    message: `Update published APK: ${data.tagName}`,
+    content
+  };
+
+  if (existing?.sha) {
+    body.sha = existing.sha;
+  }
+
+  await github(
+    `/repos/${GITHUB_OWNER}/${GITHUB_WEBSITE_REPO}/contents/${PUBLISHED_FILE}`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    }
+  );
+}
+
+async function deletePublished() {
+  const existing = await getPublishedFile();
+
+  if (!existing) {
+    return;
+  }
+
+  await github(
+    `/repos/${GITHUB_OWNER}/${GITHUB_WEBSITE_REPO}/contents/${PUBLISHED_FILE}`,
+    {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: 'Unpublish APK from website',
+        sha: existing.sha
+      })
+    }
+  );
 }
 
 function adminRequired(req, res, next) {
@@ -73,8 +170,10 @@ app.get('/api/health', (req, res) => {
 app.get('/api/releases', adminRequired, async (req, res) => {
   try {
     const releases = await github(
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=30`
+      `/repos/${GITHUB_OWNER}/${GITHUB_APP_REPO}/releases?per_page=30`
     );
+
+    const published = await readPublished();
 
     const result = releases.map((release) => ({
       id: release.id,
@@ -96,7 +195,7 @@ app.get('/api/releases', adminRequired, async (req, res) => {
     res.json({
       success: true,
       releases: result,
-      published: readPublished()
+      published
     });
   } catch (error) {
     res.status(500).json({
@@ -118,10 +217,12 @@ app.post('/api/publish', adminRequired, async (req, res) => {
     }
 
     const releases = await github(
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=100`
+      `/repos/${GITHUB_OWNER}/${GITHUB_APP_REPO}/releases?per_page=100`
     );
 
-    const release = releases.find((item) => String(item.id) === String(releaseId));
+    const release = releases.find(
+      (item) => String(item.id) === String(releaseId)
+    );
 
     if (!release) {
       return res.status(404).json({
@@ -160,7 +261,7 @@ app.post('/api/publish', adminRequired, async (req, res) => {
       publishedAt: new Date().toISOString()
     };
 
-    savePublished(published);
+    await savePublished(published);
 
     res.json({
       success: true,
@@ -174,9 +275,9 @@ app.post('/api/publish', adminRequired, async (req, res) => {
   }
 });
 
-app.post('/api/unpublish', adminRequired, (req, res) => {
+app.post('/api/unpublish', adminRequired, async (req, res) => {
   try {
-    if (fs.existsSync(DATA_FILE)) fs.unlinkSync(DATA_FILE);
+    await deletePublished();
 
     res.json({
       success: true,
@@ -190,11 +291,20 @@ app.post('/api/unpublish', adminRequired, (req, res) => {
   }
 });
 
-app.get('/api/public/apk', (req, res) => {
-  res.json({
-    success: true,
-    published: readPublished()
-  });
+app.get('/api/public/apk', async (req, res) => {
+  try {
+    const published = await readPublished();
+
+    res.json({
+      success: true,
+      published
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 app.listen(PORT, () => {

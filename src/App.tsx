@@ -1,8 +1,34 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import './App.css';
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [publishedApk, setPublishedApk] = useState<any>(null);
+  const [apkLoading, setApkLoading] = useState(true);
+
+  const API = 'https://rox-follow-website-api.onrender.com';
+
+  useEffect(() => {
+    let active = true;
+
+    fetch(`${API}/api/public/apk`)
+      .then((response) => response.json())
+      .then((data) => {
+        if (active && data.success) {
+          setPublishedApk(data.published || null);
+        }
+      })
+      .catch(() => {
+        if (active) setPublishedApk(null);
+      })
+      .finally(() => {
+        if (active) setApkLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <div className="site">
@@ -139,18 +165,42 @@ function App() {
             <div className="downloadText">
               <span className="eyebrow">GET THE APP</span>
               <h2>Download ROX FOLLOW</h2>
-              <p>Get the latest Android APK directly from the official ROX FOLLOW website.</p>
+              <p>
+                {publishedApk
+                  ? `Download ${publishedApk.fileName} directly from the official ROX FOLLOW website.`
+                  : 'The latest Android APK will appear here when it is published by the administrator.'}
+              </p>
               <div className="appMeta">
                 <span>Android</span>
                 <span>•</span>
-                <span>Latest Version</span>
+                <span>{publishedApk ? publishedApk.tagName : 'Latest Version'}</span>
                 <span>•</span>
                 <span>APK</span>
+                {publishedApk?.fileSize ? (
+                  <>
+                    <span>•</span>
+                    <span>{(publishedApk.fileSize / 1024 / 1024).toFixed(2)} MB</span>
+                  </>
+                ) : null}
               </div>
             </div>
-            <a href="#download" className="primaryBtn downloadBtn">
-              Download APK <span>↓</span>
-            </a>
+            {apkLoading ? (
+              <button className="primaryBtn downloadBtn" disabled>
+                Checking APK...
+              </button>
+            ) : publishedApk ? (
+              <a
+                href={publishedApk.downloadUrl}
+                className="primaryBtn downloadBtn"
+                download
+              >
+                Download APK <span>↓</span>
+              </a>
+            ) : (
+              <button className="secondaryBtn downloadBtn" disabled>
+                APK Not Published
+              </button>
+            )}
           </div>
         </section>
 
