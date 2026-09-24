@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rox-follow-website.vercel.app/sitemap.xml
